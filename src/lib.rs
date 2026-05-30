@@ -1,23 +1,10 @@
-//! Split a BED file into N approximately equal parts.
+//! Split a BED file into N approximately equal parts — bedtools split equivalent.
 //!
-//! Two algorithms (matching bedtools split v2.31.1):
+//! Two algorithms:
+//! - `size` (default): greedy bin-packing by interval length, balanced total bp
+//! - `simple`: round-robin by input order, balanced record count
 //!
-//! **size** (default) — greedy bin-packing: sort records by interval length
-//! descending, assign each to the bin currently holding the fewest bases.
-//! Within each output file, records appear in descending length order (the
-//! processing order).  Produces output files whose total base-pair content is
-//! balanced.
-//!
-//! **simple** — round-robin: records are routed to files 1, 2, …, N, 1, 2, …
-//! in input order.  Records within each file preserve input order.  Produces
-//! files with approximately equal record counts.
-//!
-//! Output files are written to `<prefix>.NNNNN.bed` (zero-padded to 5 digits).
-//! A summary line `<filename>\t<bases>\t<records>` is written to stderr for
-//! each output file, matching bedtools' exact format.
-//!
-//! Complexity: O(N) for `simple`; O(R log F) for `size` where R is record
-//! count and F is the number of output files (min-heap over F bins).
+//! Output: `<prefix>.NNNNN.bed`; summary `<file>\t<bases>\t<records>` to stderr.
 
 use std::cmp::Reverse;
 use std::collections::BinaryHeap;
@@ -33,10 +20,6 @@ pub enum Algorithm {
     Simple,
 }
 
-/// Split `input` BED into `n` files with the given `prefix`.
-///
-/// Returns `Vec<(filename, total_bases, record_count)>` in file-index order,
-/// matching the stderr summary bedtools emits.
 pub fn split(
     input: &Path,
     n: usize,
@@ -51,7 +34,6 @@ pub fn split(
 
     let records = read_records(input)?;
 
-    // `write_order[bin]` = indices into `records` in the order they should be written.
     let write_order = match algorithm {
         Algorithm::Size => assign_size(&records, n),
         Algorithm::Simple => assign_simple(records.len(), n),
@@ -59,8 +41,6 @@ pub fn split(
 
     write_files(&records, &write_order, n, prefix)
 }
-
-// ── record I/O ────────────────────────────────────────────────────────────────
 
 struct Record {
     line: String,
@@ -113,18 +93,11 @@ fn parse_len(line: &str) -> Result<u64> {
     Ok(end.saturating_sub(start))
 }
 
-// ── assignment algorithms ─────────────────────────────────────────────────────
-
-/// Greedy bin-packing (size algorithm).
-///
-/// Returns `write_order[bin]` = Vec of record indices in the order they should
-/// appear in that bin's output file (descending length order, matching
-/// bedtools' processing order).
+/// Records appear in descending-length order within each bin (bedtools' processing order).
 fn assign_size(records: &[Record], n: usize) -> Vec<Vec<usize>> {
     let mut order: Vec<usize> = (0..records.len()).collect();
     order.sort_unstable_by(|&a, &b| records[b].len.cmp(&records[a].len));
 
-    // Min-heap: (current_total_bases, bin_index).
     let mut heap: BinaryHeap<Reverse<(u64, usize)>> = (0..n).map(|i| Reverse((0, i))).collect();
 
     let mut bin_records: Vec<Vec<usize>> = vec![Vec::new(); n];
@@ -138,9 +111,6 @@ fn assign_size(records: &[Record], n: usize) -> Vec<Vec<usize>> {
     bin_records
 }
 
-/// Round-robin assignment (simple algorithm).
-///
-/// Returns `write_order[bin]` = Vec of record indices in input order.
 fn assign_simple(record_count: usize, n: usize) -> Vec<Vec<usize>> {
     let mut bins: Vec<Vec<usize>> = vec![Vec::new(); n];
     for i in 0..record_count {
@@ -148,8 +118,6 @@ fn assign_simple(record_count: usize, n: usize) -> Vec<Vec<usize>> {
     }
     bins
 }
-
-// ── output ────────────────────────────────────────────────────────────────────
 
 fn write_files(
     records: &[Record],

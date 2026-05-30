@@ -15,7 +15,7 @@ pub const META: ToolMeta = ToolMeta {
 #[command(
     name = "rsomics-bed-split",
     version,
-    about = "Split a BED file into N approximately equal parts — Rust port of bedtools split",
+    about = "Split a BED file into N approximately equal parts (bedtools split equivalent)",
     long_about = None,
     disable_help_flag = true
 )]
@@ -78,7 +78,7 @@ impl Tool for Cli {
 pub static HELP: HelpSpec = HelpSpec {
     name: env!("CARGO_PKG_NAME"),
     version: env!("CARGO_PKG_VERSION"),
-    tagline: "Split a BED file into N approximately equal parts — Rust port of bedtools split.",
+    tagline: "Split a BED file into N approximately equal parts (bedtools split equivalent).",
     origin: Some(Origin {
         upstream: "bedtools split",
         upstream_license: "MIT",
